@@ -377,13 +377,17 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
   // Horizontal scrollbar handlers
   const isScrollable = zoom > 1.01 && totalDataLen > 5;
   const scrollMax = Math.max(1, totalDataLen - visibleCount);
+  const thumbPct = Math.max(10, totalDataLen > 0 ? (visibleCount / totalDataLen) * 100 : 100);
+  const scrollPct = scrollMax > 0 ? (offset / scrollMax) * (100 - thumbPct) : 0;
 
   const onScrollTrackClick = useCallback((e) => {
     if (!isScrollable || !scrollTrackRef.current) return;
     const rect = scrollTrackRef.current.getBoundingClientRect();
-    const frac = (e.clientX - rect.left) / rect.width;
+    const clickFrac = (e.clientX - rect.left) / rect.width;
+    const usableFrac = 1 - thumbPct / 100;
+    const frac = usableFrac > 0 ? Math.min(clickFrac, usableFrac) / usableFrac : 0;
     setOffset(Math.round(frac * scrollMax));
-  }, [isScrollable, scrollMax]);
+  }, [isScrollable, scrollMax, thumbPct]);
 
   const onScrollThumbDown = useCallback((e) => {
     e.stopPropagation();
@@ -396,17 +400,15 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
     const move = (e) => {
       const dx = e.clientX - scrollDrag.startX;
       if (!scrollTrackRef.current) return;
-      const frac = dx / scrollTrackRef.current.offsetWidth;
-      setOffset(Math.max(0, Math.min(scrollMax, Math.round(scrollDrag.startOffset + frac * scrollMax))));
+      const usablePx = scrollTrackRef.current.offsetWidth * (1 - thumbPct / 100);
+      const newOffset = Math.round(scrollDrag.startOffset + (dx / usablePx) * scrollMax);
+      setOffset(Math.max(0, Math.min(scrollMax, newOffset)));
     };
     const up = () => setScrollDrag(null);
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-  }, [scrollDrag, scrollMax]);
-
-  const scrollPct = scrollMax > 0 ? (offset / scrollMax) * 100 : 0;
-  const thumbPct = totalDataLen > 0 ? (visibleCount / totalDataLen) * 100 : 100;
+  }, [scrollDrag, scrollMax, thumbPct]);
 
   const renderLine = () => {
     if (visibleClosePrices.length < 2) return null;
