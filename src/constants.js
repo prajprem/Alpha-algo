@@ -136,6 +136,7 @@ export const TABS = [
   { id: "trades", label: "Trades" },
   { id: "portfolio", label: "Portfolio" },
   { id: "fno", label: "F&O" },
+  { id: "fno-verdict", label: "F&O Verdict" },
   { id: "charts", label: "Charts" },
   { id: "indicators", label: "Indicators" },
   { id: "verdict", label: "Verdict" },

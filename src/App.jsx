@@ -17,6 +17,7 @@ import ConnectionsTab from "./pages/ConnectionsTab";
 import ChartsPage from "./pages/ChartsPage";
 import AnalysisTab from "./pages/AnalysisTab";
 import TradeVerdictTab from "./pages/TradeVerdictTab";
+import FnoVerdictTab from "./pages/FnoVerdictTab";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 /* ================================================================
@@ -1393,6 +1394,9 @@ export default function App() {
         )}
         {tab === "fno" && (
           <FnODashboard prices={prices} S={S} toast_={toast_} />
+        )}
+        {tab === "fno-verdict" && (
+          <FnoVerdictTab prices={prices} hist={hist} S={S} toast_={toast_} />
         )}
         {tab === "charts" && (
           <ChartsPage ALL={ALL} prices={prices} hist={hist} sel={sel} setSel={setSel} S={S} indicators={indicators} />

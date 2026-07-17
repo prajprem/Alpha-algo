@@ -1,7 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import axios from 'axios';
-import * as cheerio from 'cheerio';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
@@ -103,6 +101,12 @@ const KITE_UNDERLYING_MAP = {
 };
 
 // Instrument parameters
+const YF_SPOT_SYMBOL_MAP = {
+    'NIFTY': '^NSEI',
+    'BANKNIFTY': '^NSEBANK',
+    'FINNIFTY': 'NIFTY_FIN_SERVICE.NS'
+};
+
 const INST_PARAMS = {
     'NIFTY': { step: 50 },
     'BANKNIFTY': { step: 100 },
@@ -268,35 +272,21 @@ function seededRnd(seedStr, min, max) {
     return min + rnd * (max - min);
 }
 
-// Scrape live price from Google Finance
+// Fetch live spot price from Yahoo Finance
 async function getSpotPrice(symbolKey) {
-    const gfSymbol = INSTRUMENT_MAP[symbolKey];
-    if (!gfSymbol) return null;
+    const yfSymbol = YF_SPOT_SYMBOL_MAP[symbolKey];
+    if (!yfSymbol) return null;
     try {
-        const url = `https://www.google.com/finance/quote/${gfSymbol}`;
-        const response = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            },
-            timeout: 5000
-        });
-        const $ = cheerio.load(response.data);
-        const priceText = $('.YMlKec.fxKbKc').first().text();
-        const changeText = $('.JwB6zf').first().text();
-        
-        let spot = 0;
-        let change = 0;
-        
-        if (priceText) {
-            spot = parseFloat(priceText.replace(/,/g, ''));
+        const q = await yf.quote(yfSymbol);
+        if (q && q.regularMarketPrice) {
+            return {
+                spot: q.regularMarketPrice,
+                change: q.regularMarketChangePercent || 0
+            };
         }
-        if (changeText) {
-            change = parseFloat(changeText.replace('%', ''));
-        }
-        
-        return { spot, change };
+        return null;
     } catch (e) {
-        console.error("Error fetching spot price", e.message);
+        console.error(`[YF] Spot price error for ${symbolKey}:`, e.message);
         return null;
     }
 }
