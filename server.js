@@ -528,13 +528,15 @@ app.get('/api/chart/history', async (req, res) => {
     const period1 = Math.floor(Date.now() / 1000) - tf.periodDays * 86400;
 
     try {
+        const roundPrice = (v) => v != null ? Math.round(v * 100) / 100 : v;
+
         const result = await yf.chart(yhSymbol, { period1, interval: tf.interval });
         const quotes = (result.quotes || []).map(q => ({
             time: q.date,
-            open: q.open,
-            high: q.high,
-            low: q.low,
-            close: q.close,
+            open: roundPrice(q.open),
+            high: roundPrice(q.high),
+            low: roundPrice(q.low),
+            close: roundPrice(q.close),
             volume: q.volume,
         })).filter(q => q.open != null && q.close != null).slice(-500);
 
