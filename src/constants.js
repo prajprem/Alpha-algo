@@ -106,10 +106,10 @@ export const mkBracket = (asset, rawPrice, dir, cfg) => {
 
 /* Default config */
 export const DEFAULT_CFG = {
-	cryptoCap: 100,
-	lev: 20,
-	feeRate: .001,
-	fnoCap: 2000,
+  cryptoCap: 100,
+  lev: 20,
+  feeRate: .001,
+  fnoCap: 10000,
   minTradeUSD: 10,
   minTradeINR: 500,
   autoTrade: false,
@@ -124,9 +124,6 @@ export const DEFAULT_CFG = {
   trailSlPct: 1.5,
   trailTpPct: 0.5,
   trailingStop: false,
-  cryptoCap: 100,
-  fnoCap: 10000,
-  lev: 20,
   hedgeLossPct: -30,
 };
 

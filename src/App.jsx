@@ -786,7 +786,9 @@ const BankPanel = ({ bankAccount, setBankAccount, S, toast_ }) => (
    ================================================================ */
 export default function App() {
   /* ── State ── */
-  const [tab, setTab] = useState("watchlist");
+  const [tab, setTab] = useState(() => {
+    try { return localStorage.getItem("alpha_tab") || "watchlist"; } catch { return "watchlist"; }
+  });
   const [ALL, setAll] = useState(() => {
     try { const s = localStorage.getItem("alpha_assets"); return s ? JSON.parse(s) : [...DEFAULT_CRYPTO, ...DEFAULT_TRAD]; }
     catch { return [...DEFAULT_CRYPTO, ...DEFAULT_TRAD]; }
@@ -817,7 +819,9 @@ export default function App() {
   const [ohlcPrices, setOhlcPrices] = useState({});
   const [indicators, setIndicators] = useState({});
   const [gannData, setGannData] = useState({});
-  const [sel, setSel] = useState("BTC");
+  const [sel, setSel] = useState(() => {
+    try { return localStorage.getItem("alpha_sel") || "BTC"; } catch { return "BTC"; }
+  });
   const [cfg, setCfg] = useState(() => {
     try {
       const s = localStorage.getItem("alpha_cfg");
@@ -861,7 +865,7 @@ export default function App() {
   histRef.current = hist;
   const seededRef = useRef(new Set());
 
-  /* ── Persist ── */
+  /* ── Persist to localStorage ── */
   useEffect(() => { localStorage.setItem("alpha_cfg", JSON.stringify(cfg)); }, [cfg]);
   useEffect(() => { localStorage.setItem("alpha_assets", JSON.stringify(ALL)); }, [ALL]);
   useEffect(() => { localStorage.setItem("alpha_trades", JSON.stringify(trades)); }, [trades]);
@@ -871,6 +875,41 @@ export default function App() {
   useEffect(() => { localStorage.setItem("alpha_users", JSON.stringify(users)); }, [users]);
   useEffect(() => { localStorage.setItem("alpha_current_user", JSON.stringify(currentUser)); }, [currentUser]);
   useEffect(() => { localStorage.setItem("alpha_bank", JSON.stringify(bankAccount)); }, [bankAccount]);
+  useEffect(() => { localStorage.setItem("alpha_tab", tab); }, [tab]);
+  useEffect(() => { localStorage.setItem("alpha_sel", sel); }, [sel]);
+
+  /* ── Sync config to server (debounced) ── */
+  const syncRef = useRef(null);
+  const syncToServer = useCallback((data) => {
+    if (syncRef.current) clearTimeout(syncRef.current);
+    syncRef.current = setTimeout(() => {
+      fetch('/api/config/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }).catch(() => {});
+    }, 1000);
+  }, []);
+
+  useEffect(() => { syncToServer({ cfg, trades, wallet, watchlist, connections, bankAccount, currentUserId: currentUser.id }); }, [cfg, trades, wallet, watchlist, connections, bankAccount, currentUser, syncToServer]);
+
+  /* ── Restore persisted settings from server on startup ── */
+  useEffect(() => {
+    fetch('/api/config/load')
+      .then(r => r.json())
+      .then(data => {
+        if (data.config) {
+          const s = data.config;
+          if (s.cfg) setCfg(prev => ({ ...prev, ...s.cfg }));
+          if (s.trades) setTrades(s.trades);
+          if (s.wallet) setWallet(s.wallet);
+          if (s.watchlist) setWatchlist(s.watchlist);
+          if (s.connections) setConnections(s.connections);
+          if (s.bankAccount) setBankAccount(s.bankAccount);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   /* ── Toast helper ── */
   const toast_ = useCallback((msg, type = "info") => {

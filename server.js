@@ -18,6 +18,7 @@ const FNO_AGENT_DIR = path.join(os.homedir(), 'fno-agent');
 const KITE_SESSION_FILE = path.join(os.homedir(), '.alpha-algo', 'kite-session.json');
 const KITE_INSTR_CACHE_FILE = path.join(os.homedir(), '.alpha-algo', 'kite-instruments.json');
 const KITE_INSTR_CACHE_TTL = 3600000; // 1 hour
+const CONFIG_FILE = path.join(os.homedir(), '.alpha-algo', 'config.json');
 
 const app = express();
 app.use(cors());
@@ -622,6 +623,34 @@ app.get('/api/fno-agent/news', async (req, res) => {
             tickers: n.relatedTickers || []
         }));
         res.json({ query, headlines });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ── Config Persistence (backup for client-side settings) ─────────
+app.get('/api/config/load', (req, res) => {
+    try {
+        if (fs.existsSync(CONFIG_FILE)) {
+            const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+            return res.json({ config: data });
+        }
+        res.json({ config: null });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/config/save', (req, res) => {
+    try {
+        const data = req.body;
+        if (!data || Object.keys(data).length === 0) {
+            return res.status(400).json({ error: 'No data provided' });
+        }
+        const dir = path.dirname(CONFIG_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(data, null, 2));
+        res.json({ status: 'saved' });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
