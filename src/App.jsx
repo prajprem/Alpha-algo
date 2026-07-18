@@ -86,7 +86,7 @@ function Toast({ toasts }) {
    ================================================================ */
 function Header({ tab, setTab, prices, ALL, currentUser, users, setCurrentUser, setShowUserMgmt, showUserMgmt }) {
   const totalAssets = ALL.length;
-  const liveCount = Object.keys(prices).length;
+  const liveCount = ALL.filter(a => prices[a.symbol] && isOpen(a)).length;
   return (
     <div style={{
       background: S.card, borderBottom: `1px solid ${S.border}`,
