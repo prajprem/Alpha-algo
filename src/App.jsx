@@ -972,18 +972,14 @@ export default function App() {
     return () => clearInterval(iv);
   }, [ALL, cfg?.fastApiUrl]);
 
-  /* ── Live price simulation - 2s micro-jitter for ALL assets so every page shows live ticking prices ── */
+  /* ── Live price micro-jitter for demo-priced assets only ── */
   useEffect(() => {
     const iv = setInterval(() => {
       setPrices((prev) => {
         const next = { ...prev };
         ALL.forEach((a) => {
-          if (next[a.symbol] && isOpen(a)) {
-            // Small realistic micro-jitter on ALL sources (real prices already update every 30s from API;
-            // the micro-jitter makes them feel live on all pages in between API fetches)
-            const jitterPct = next[a.symbol].source === "coingecko" || next[a.symbol].source === "yahoo_finance"
-              ? 0.0008  // ±0.08% for real prices (tiny, realistic)
-              : 0.0025; // ±0.25% for demo prices
+          if (next[a.symbol] && isOpen(a) && !next[a.symbol].source) {
+            const jitterPct = 0.0025;
             const jitter = next[a.symbol].usd * (Math.random() * jitterPct * 2 - jitterPct);
             next[a.symbol] = { ...next[a.symbol], usd: next[a.symbol].usd + jitter };
           }
