@@ -92,7 +92,7 @@ export default function FourteenKTab({ prices, S }) {
 
     for (const sym of SUPPORTED) {
       try {
-        const r = await fetch(`/api/chart/history?symbol=${sym}&interval=1h`, {
+        const r = await fetch(`/api/chart/history?symbol=${sym}&interval=15m`, {
           signal: AbortSignal.timeout(10000),
         });
         if (!r.ok) { out[sym] = { error: "fetch failed" }; continue; }
