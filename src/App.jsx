@@ -923,29 +923,28 @@ export default function App() {
     setLogs((p) => [...p.slice(-500), { time: ts(), msg, type }]);
   }, []);
 
-  /* ── Fetch Prices (Crypto from CoinGecko, F&O from backend/Yahoo Finance) ── */
+  /* ── Fetch Prices (Crypto & F&O from backend/Yahoo Finance) ── */
   useEffect(() => {
-    const cryptoIds = ALL.filter((a) => a.cgId).map((a) => a.cgId).join(",");
     const backendUrl = cfg?.fastApiUrl || "";
 
     const fetchPrices = async () => {
-      // 1. Crypto prices from CoinGecko
+      // 1. Crypto prices from backend (Yahoo Finance, no rate limits)
       try {
-        if (cryptoIds) {
-          const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cryptoIds}&vs_currencies=usd&include_24hr_change=true`);
+        const r = await fetch(`/api/prices/crypto`, { signal: AbortSignal.timeout(8000) });
+        if (r.ok) {
           const d = await r.json();
           setPrices((prev) => {
             const next = { ...prev };
-            ALL.forEach((a) => {
-              if (a.cgId && d[a.cgId]) {
-                next[a.symbol] = { usd: d[a.cgId].usd, usd_24h_change: d[a.cgId].usd_24h_change, source: "coingecko" };
+            Object.entries(d).forEach(([sym, data]) => {
+              if (data && data.usd != null) {
+                next[sym] = { usd: data.usd, usd_24h_change: data.usd_24h_change, source: "yahoo_finance" };
               }
             });
             return next;
           });
         }
       } catch (e) {
-        console.warn(`CoinGecko price fetch failed: ${e.message}`);
+        console.warn(`Crypto price fetch failed: ${e.message}`);
       }
 
       // 2. F&O prices from backend (Yahoo Finance)

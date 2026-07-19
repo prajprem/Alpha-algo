@@ -565,6 +565,32 @@ app.get('/api/chart/history', async (req, res) => {
     }
 });
 
+// ── Crypto Prices (Yahoo Finance, no rate limiting) ────────────
+const CRYPTO_YF_MAP = {
+    'BTC': 'BTC-USD', 'ETH': 'ETH-USD', 'SOL': 'SOL-USD', 'ADA': 'ADA-USD', 'AVAX': 'AVAX-USD'
+};
+
+app.get('/api/prices/crypto', async (req, res) => {
+    try {
+        const symbols = Object.values(CRYPTO_YF_MAP);
+        const results = await yf.quote(symbols);
+        const prices = {};
+        for (const [key, yfSym] of Object.entries(CRYPTO_YF_MAP)) {
+            const q = Array.isArray(results) ? results.find(r => r.symbol === yfSym) : results;
+            if (q && q.regularMarketPrice != null) {
+                prices[key] = {
+                    usd: Math.round(q.regularMarketPrice * 100) / 100,
+                    usd_24h_change: q.regularMarketChangePercent || 0,
+                };
+            }
+        }
+        res.json(prices);
+    } catch (e) {
+        console.error('[Crypto] Price fetch error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ── F&O AI Agent endpoints ──────────────────────────────────────
 app.get('/api/fno-agent/status', (req, res) => {
     try {
