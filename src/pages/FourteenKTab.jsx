@@ -9,6 +9,26 @@ const SUPPORTED = ["BTC","ETH","SOL","ADA","AVAX","XAU/USD","XAG/USD","OIL","NIF
 const isGreen = (c) => c.close >= c.open;
 const isRed = (c) => c.close < c.open;
 
+function calcEma(arr, p) {
+  if (!arr || arr.length < p) return [];
+  const k = 2 / (p + 1);
+  const result = [];
+  let e = arr.slice(0, p).reduce((a, b) => a + b, 0) / p;
+  for (let i = 0; i < p - 1; i++) result.push(null);
+  result.push(e);
+  for (let i = p; i < arr.length; i++) { e = arr[i] * k + e * (1 - k); result.push(e); }
+  return result;
+}
+
+function determineTrend(ohlc) {
+  if (!ohlc || ohlc.length < 20) return "UP";
+  const closes = ohlc.map(c => c.close);
+  const ema20 = calcEma(closes, 20);
+  const lastIdx = ohlc.length - 1;
+  if (ema20[lastIdx] == null) return "UP";
+  return ohlc[lastIdx].close >= ema20[lastIdx] ? "UP" : "DOWN";
+}
+
 function findAllPatterns(candles) {
   if (!candles || candles.length < 6) return [];
   const patterns = [];
@@ -85,15 +105,15 @@ function findAllPatterns(candles) {
   return patterns;
 }
 
-function buildLiveCandles(ohlc, histPrices, currentPrice) {
+function buildLiveCandles(ohlc, histPrices, currentPrice, intervalMs) {
   if (!ohlc || ohlc.length < 2) return ohlc || [];
   const candles = [...ohlc];
   const last = candles[candles.length - 1];
   const lastTime = new Date(last.time).getTime();
   const now = Date.now();
-  const fifteenMin = 15 * 60 * 1000;
+  const threshold = intervalMs || 15 * 60 * 1000;
 
-  if (now - lastTime >= fifteenMin) {
+  if (now - lastTime >= threshold) {
     const open = last.close;
     const close = currentPrice != null ? currentPrice : last.close;
     const allP = [open, close, ...(histPrices || [])];
@@ -116,22 +136,36 @@ export default function FourteenKTab({ prices, hist, S }) {
   const analyze = useCallback(async () => {
     setLoading(true);
     const out = {};
+    const currentPrice = prices;
+    const histPrices = hist;
 
     for (const sym of SUPPORTED) {
       try {
-        const r = await fetch(`/api/chart/history?symbol=${sym}&interval=15m`, {
+        // Step 1: Fetch 1h data to determine market trend
+        const trendR = await fetch(`/api/chart/history?symbol=${sym}&interval=1h`, {
           signal: AbortSignal.timeout(10000),
         });
-        if (!r.ok) { out[sym] = { error: "fetch failed" }; continue; }
-        const data = await r.json();
-        if (!data.ohlc || data.ohlc.length < 10) { out[sym] = { error: "insufficient data" }; continue; }
+        if (!trendR.ok) { out[sym] = { error: "trend fetch failed" }; continue; }
+        const trendData = await trendR.json();
+        if (!trendData.ohlc || trendData.ohlc.length < 20) { out[sym] = { error: "insufficient 1h data" }; continue; }
+        const trend = determineTrend(trendData.ohlc);
 
-        // Blend historical 15m candles with a live candle from realtime data
-        const currentPrice = prices?.[sym]?.usd;
-        const histPrices = hist?.[sym];
-        const blended = buildLiveCandles(data.ohlc, histPrices, currentPrice);
-        const patterns = findAllPatterns(blended);
-        out[sym] = { patterns, candleCount: data.ohlc.length, blendedCount: blended.length };
+        // Step 2: Fetch 5m data for pattern detection
+        const patR = await fetch(`/api/chart/history?symbol=${sym}&interval=5m`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!patR.ok) { out[sym] = { error: "pattern fetch failed" }; continue; }
+        const patData = await patR.json();
+        if (!patData.ohlc || patData.ohlc.length < 10) { out[sym] = { error: "insufficient 5m data" }; continue; }
+
+        // Blend historical 5m candles with a live candle from realtime data
+        const blended = buildLiveCandles(patData.ohlc, histPrices?.[sym], currentPrice?.[sym]?.usd, 5 * 60 * 1000);
+
+        // Find only patterns matching the 1h trend direction
+        const allPatterns = findAllPatterns(blended);
+        const patterns = allPatterns.filter(p => p.trend === trend);
+
+        out[sym] = { trend, patterns, candleCount: patData.ohlc.length, blendedCount: blended.length };
       } catch (e) {
         out[sym] = { error: e.message };
       }
@@ -139,7 +173,7 @@ export default function FourteenKTab({ prices, hist, S }) {
 
     setResults(out);
     setLoading(false);
-  }, []);
+  }, [prices, hist]);
 
   useEffect(() => { analyze(); }, [analyze]);
 
@@ -152,7 +186,7 @@ export default function FourteenKTab({ prices, hist, S }) {
       }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: S.bright }}>14K Indicator</div>
         <div style={{ fontSize: 10, color: S.dim }}>
-          Detects momentum-retracement patterns on 1h charts using the 1.618 Fibonacci ratio
+          1h trend + 5m patterns using the 1.618 Fibonacci ratio
         </div>
         <div style={{ flex: 1 }} />
         <button onClick={analyze} style={{
@@ -175,6 +209,7 @@ export default function FourteenKTab({ prices, hist, S }) {
             if (!r) return null;
             const price = prices?.[sym]?.usd;
             const assetColor = sym === "BTC" ? "#F7931A" : sym === "ETH" ? "#627EEA" : sym === "SOL" ? "#9945FF" : sym === "ADA" ? "#0D99FF" : sym === "AVAX" ? "#E84142" : sym === "XAU/USD" ? "#FFD700" : sym === "XAG/USD" ? "#C0C0C0" : sym === "OIL" ? "#E8883A" : sym === "NIF" ? "#FF9933" : sym === "BNK" ? "#00B4D8" : sym === "REL" ? "#0077B6" : S.blue;
+            const trend = r.trend;
             const patterns = r.patterns;
             const currentPrice = price;
 
@@ -188,6 +223,16 @@ export default function FourteenKTab({ prices, hist, S }) {
                   <span style={{ fontSize: 13, fontWeight: 700, color: assetColor }}>{sym}</span>
                   {currentPrice != null && (
                     <span style={{ fontSize: 10, color: S.dim, ...mono }}>${fmt(currentPrice, 2)}</span>
+                  )}
+                  {trend && (
+                    <span style={{
+                      fontSize: 9, fontWeight: 600, padding: "1px 7px", borderRadius: 3,
+                      background: trend === "UP" ? S.green + "18" : S.red + "18",
+                      color: trend === "UP" ? S.green : S.red,
+                      border: `1px solid ${trend === "UP" ? S.green : S.red}44`,
+                    }}>
+                      1h {trend === "UP" ? "↑ BULL" : "↓ BEAR"}
+                    </span>
                   )}
                   {r.error && <span style={{ fontSize: 10, color: S.red }}>{r.error}</span>}
                   {!r.error && (!patterns || patterns.length === 0) && (
