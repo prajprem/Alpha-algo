@@ -20,7 +20,7 @@ function findAllPatterns(candles) {
       let rEnd = i;
       while (rEnd < candles.length - 1 && isRed(candles[rEnd + 1]) && (rEnd - i) < 2) rEnd++;
       const retCount = rEnd - i + 1;
-      if (retCount < 1 || retCount > 3) continue;
+      if (retCount !== 1 && retCount !== 3) continue;
 
       let mStart = i - 1;
       while (mStart > 0 && isGreen(candles[mStart - 1])) mStart--;
@@ -46,7 +46,7 @@ function findAllPatterns(candles) {
       let rEnd = i;
       while (rEnd < candles.length - 1 && isGreen(candles[rEnd + 1]) && (rEnd - i) < 2) rEnd++;
       const retCount = rEnd - i + 1;
-      if (retCount < 1 || retCount > 3) continue;
+      if (retCount !== 1 && retCount !== 3) continue;
 
       let mStart = i - 1;
       while (mStart > 0 && isRed(candles[mStart - 1])) mStart--;
@@ -75,7 +75,31 @@ function findAllPatterns(candles) {
   return patterns;
 }
 
-export default function FourteenKTab({ prices, S }) {
+function buildLiveCandles(ohlc, histPrices, currentPrice) {
+  if (!ohlc || ohlc.length < 2) return ohlc || [];
+  const candles = [...ohlc];
+  const last = candles[candles.length - 1];
+  const lastTime = new Date(last.time).getTime();
+  const now = Date.now();
+  const fifteenMin = 15 * 60 * 1000;
+
+  if (now - lastTime >= fifteenMin) {
+    const open = last.close;
+    const close = currentPrice != null ? currentPrice : last.close;
+    const allP = [open, close, ...(histPrices || [])];
+    candles.push({
+      time: new Date(now).toISOString(),
+      open,
+      high: Math.max(...allP),
+      low: Math.min(...allP),
+      close,
+      volume: 0,
+    });
+  }
+  return candles;
+}
+
+export default function FourteenKTab({ prices, hist, S }) {
   const [results, setResults] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -92,8 +116,12 @@ export default function FourteenKTab({ prices, S }) {
         const data = await r.json();
         if (!data.ohlc || data.ohlc.length < 10) { out[sym] = { error: "insufficient data" }; continue; }
 
-        const patterns = findAllPatterns(data.ohlc);
-        out[sym] = { patterns, candleCount: data.ohlc.length };
+        // Blend historical 15m candles with a live candle from realtime data
+        const currentPrice = prices?.[sym]?.usd;
+        const histPrices = hist?.[sym];
+        const blended = buildLiveCandles(data.ohlc, histPrices, currentPrice);
+        const patterns = findAllPatterns(blended);
+        out[sym] = { patterns, candleCount: data.ohlc.length, blendedCount: blended.length };
       } catch (e) {
         out[sym] = { error: e.message };
       }

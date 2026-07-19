@@ -1440,7 +1440,7 @@ export default function App() {
           <IndicatorsTab ALL={ALL} prices={prices} indicators={indicators} gannData={gannData} sel={sel} setSel={setSel} S={S} />
         )}
         {tab === "14k" && (
-          <FourteenKTab prices={prices} S={S} />
+          <FourteenKTab prices={prices} hist={hist} S={S} />
         )}
         {tab === "analysis" && (
           <AnalysisTab trades={trades} prices={prices} indicators={indicators} ALL={ALL} S={S} toast_={toast_} />
