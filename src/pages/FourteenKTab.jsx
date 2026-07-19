@@ -36,7 +36,12 @@ function findAllPatterns(candles) {
         trend: "UP",
         momCount, retCount, range,
         level: Math.round(level * 100) / 100,
-        lastRetLow: retCandles[retCandles.length - 1].low,
+        momHigh: Math.max(...momCandles.map(c => c.high)),
+        momLow: Math.min(...momCandles.map(c => c.low)),
+        retLow: retCandles[retCandles.length - 1].low,
+        retHigh: Math.max(...retCandles.map(c => c.high)),
+        lastRetOpen: retCandles[retCandles.length - 1].open,
+        lastRetClose: retCandles[retCandles.length - 1].close,
         lastRetTime: retCandles[retCandles.length - 1].time,
         momStart: mStart, momEnd: i - 1, retStart: i, retEnd: rEnd,
       });
@@ -62,7 +67,12 @@ function findAllPatterns(candles) {
         trend: "DOWN",
         momCount, retCount, range,
         level: Math.round(level * 100) / 100,
-        lastRetHigh: retCandles[retCandles.length - 1].high,
+        momHigh: Math.max(...momCandles.map(c => c.high)),
+        momLow: Math.min(...momCandles.map(c => c.low)),
+        retHigh: retCandles[retCandles.length - 1].high,
+        retLow: Math.min(...retCandles.map(c => c.low)),
+        lastRetOpen: retCandles[retCandles.length - 1].open,
+        lastRetClose: retCandles[retCandles.length - 1].close,
         lastRetTime: retCandles[retCandles.length - 1].time,
         momStart: mStart, momEnd: i - 1, retStart: i, retEnd: rEnd,
       });
@@ -190,11 +200,16 @@ export default function FourteenKTab({ prices, hist, S }) {
 
                 {patterns && patterns.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {patterns.map(p => (
+                    {patterns.map(p => {
+                      const formulaVal = p.trend === "UP"
+                        ? `${fmt(p.retLow, 2)} + (${fmt(p.momHigh, 2)} − ${fmt(p.momLow, 2)}) × 1.618`
+                        : `${fmt(p.retHigh, 2)} − (${fmt(p.momHigh, 2)} − ${fmt(p.momLow, 2)}) × 1.618`;
+                      return (
                       <div key={p.label} style={{
-                        display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                        display: "flex", flexDirection: "column", gap: 4,
                         padding: "6px 10px", background: S.bg, borderRadius: 6, fontSize: 10,
                       }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <span style={{
                           fontWeight: 700, fontSize: 11,
                           color: p.trend === "UP" ? S.green : S.red,
@@ -235,8 +250,34 @@ export default function FourteenKTab({ prices, hist, S }) {
                         <span style={{ color: S.dim, fontSize: 9 }}>
                           {p.lastRetTime ? new Date(p.lastRetTime).toLocaleString() : "—"}
                         </span>
+                        </div>
+
+                        {/* Formula breakdown */}
+                        <div style={{
+                          display: "flex", gap: 12, fontSize: 9, color: S.dim,
+                          padding: "4px 0 0 18px", flexWrap: "wrap",
+                        }}>
+                          <span>
+                            {p.trend === "UP" ? "Retrace Low" : "Retrace High"} ={" "}
+                            <span style={{ color: S.text, ...mono }}>{fmt(p.trend === "UP" ? p.retLow : p.retHigh, 2)}</span>
+                          </span>
+                          <span>
+                            Mom High = <span style={{ color: S.text, ...mono }}>{fmt(p.momHigh, 2)}</span>
+                          </span>
+                          <span>
+                            Mom Low = <span style={{ color: S.text, ...mono }}>{fmt(p.momLow, 2)}</span>
+                          </span>
+                          <span>
+                            Range = {fmt(p.momHigh, 2)} − {fmt(p.momLow, 2)} ={" "}
+                            <span style={{ color: S.amber, ...mono }}>{fmt(p.range, 2)}</span>
+                          </span>
+                          <span>
+                            Formula: {formulaVal} ={" "}
+                            <span style={{ color: S.bright, fontWeight: 700, ...mono }}>{fmt(p.level, 2)}</span>
+                          </span>
+                        </div>
                       </div>
-                    ))}
+                    );})}
                   </div>
                 )}
               </div>
