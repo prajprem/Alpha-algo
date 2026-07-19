@@ -18,6 +18,7 @@ import ChartsPage from "./pages/ChartsPage";
 import AnalysisTab from "./pages/AnalysisTab";
 import TradeVerdictTab from "./pages/TradeVerdictTab";
 import FnoVerdictTab from "./pages/FnoVerdictTab";
+import FourteenKTab from "./pages/FourteenKTab";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 /* ================================================================
@@ -1437,6 +1438,9 @@ export default function App() {
         )}
         {tab === "indicators" && (
           <IndicatorsTab ALL={ALL} prices={prices} indicators={indicators} gannData={gannData} sel={sel} setSel={setSel} S={S} />
+        )}
+        {tab === "14k" && (
+          <FourteenKTab prices={prices} S={S} />
         )}
         {tab === "analysis" && (
           <AnalysisTab trades={trades} prices={prices} indicators={indicators} ALL={ALL} S={S} toast_={toast_} />
