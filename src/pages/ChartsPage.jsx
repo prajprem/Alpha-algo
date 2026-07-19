@@ -86,6 +86,10 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
   const [offset, setOffset] = useState(0);
   const [selection, setSelection] = useState(null);
   const [scrollDrag, setScrollDrag] = useState(null);
+  const [showRange, setShowRange] = useState(false);
+  const [drawMode, setDrawMode] = useState(false);
+  const [priceLines, setPriceLines] = useState([]);
+  const [selectedLineId, setSelectedLineId] = useState(null);
   const svgRef = useRef(null);
   const selRef = useRef(null);
   const onWheelRef = useRef(null);
@@ -221,6 +225,23 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
     return { pMin: mn - pad, pMax: mx + pad, pRange: range + pad * 2 };
   }, [visibleClosePrices, visibleCandles, isCandleType, price, visBBU, visBBL, visEma12, visEma26]);
 
+  const rangeData = useMemo(() => {
+    let high, low;
+    if (isCandleType && visibleCandles.length > 0) {
+      high = Math.max(...visibleCandles.map(c => c.h));
+      low = Math.min(...visibleCandles.map(c => c.l));
+    } else if (visibleClosePrices.length > 0) {
+      const valid = visibleClosePrices.filter(v => v != null);
+      if (valid.length === 0) return null;
+      high = Math.max(...valid);
+      low = Math.min(...valid);
+    } else return null;
+    const mid = (high + low) / 2;
+    const pts = high - low;
+    const pct = low > 0 ? (pts / low) * 100 : 0;
+    return { high, low, mid, pts, pct };
+  }, [visibleCandles, visibleClosePrices, isCandleType]);
+
   const barW = useMemo(() => chartW / (visibleCount || 1), [chartW, visibleCount]);
 
   const tickToX = useCallback((i) => {
@@ -237,6 +258,10 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
 
   const toY = useCallback((v) => {
     return PAD.t + chartH - ((v - pMin) / pRange) * chartH;
+  }, [pMin, pRange, chartH]);
+
+  const yToPrice = useCallback((y) => {
+    return pMin + ((PAD.t + chartH - y) / chartH) * pRange;
   }, [pMin, pRange, chartH]);
 
   // Wheel zoom: centered on mouse position (ref-based to allow passive:false)
@@ -276,7 +301,13 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
     return () => window.removeEventListener('wheel', handler);
   }, []);
 
-  // Start selection drag
+  // Delete line handler
+  const removeLine = useCallback((id) => {
+    setPriceLines(p => p.filter(l => l.id !== id));
+    setSelectedLineId(prev => prev === id ? null : prev);
+  }, []);
+
+  // Start selection drag (or add price line in draw mode)
   const onMouseDown = useCallback((e) => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -285,9 +316,27 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top) * scaleX;
     if (mx < PAD.l || mx > W - PAD.r || my < PAD.t || my > PAD.t + chartH) return;
+
+    if (drawMode) {
+      const price = yToPrice(my);
+      setPriceLines(p => [...p, { id: Date.now(), price: Math.round(price * 100) / 100 }]);
+      return;
+    }
+
+    // Check if clicking near an existing price line
+    const threshold = 8;
+    for (const line of priceLines) {
+      const lineY = toY(line.price);
+      if (Math.abs(my - lineY) < threshold) {
+        setSelectedLineId(line.id);
+        return;
+      }
+    }
+    setSelectedLineId(null);
+
     selRef.current = { startX: mx, startY: my };
     setSelection({ x1: mx, y1: my, x2: mx, y2: my });
-  }, []);
+  }, [drawMode, priceLines, yToPrice, toY]);
 
   // Finalize selection on mouseup → fixate with avg/high/low
   const onMouseUp = useCallback((e) => {
@@ -409,6 +458,73 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
     window.addEventListener('mouseup', up);
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
   }, [scrollDrag, scrollMax, thumbPct]);
+
+  const renderPriceRange = () => {
+    if (!showRange || !rangeData) return null;
+    const { high, low, mid } = rangeData;
+    const highY = toY(high);
+    const lowY = toY(low);
+    const midY = toY(mid);
+    const fillColor = "#22c55e";
+    return (
+      <g>
+        <rect x={PAD.l} y={highY} width={chartW} height={Math.max(1, lowY - highY)} fill={fillColor} opacity="0.06" />
+        <line x1={PAD.l} y1={highY} x2={PAD.l + chartW} y2={highY} stroke={fillColor} strokeWidth="0.7" strokeDasharray="4,3" opacity="0.5" />
+        <line x1={PAD.l} y1={lowY} x2={PAD.l + chartW} y2={lowY} stroke={fillColor} strokeWidth="0.7" strokeDasharray="4,3" opacity="0.5" />
+        <line x1={PAD.l} y1={midY} x2={PAD.l + chartW} y2={midY} stroke={fillColor} strokeWidth="0.5" strokeDasharray="2,4" opacity="0.3" />
+        {[
+          { val: high, y: highY, label: "H" },
+          { val: mid, y: midY, label: "Mid" },
+          { val: low, y: lowY, label: "L" },
+        ].map(({ val, y, label }) => (
+          y >= PAD.t && y <= PAD.t + chartH ? (
+            <g key={label}>
+              <rect x={PAD.l + chartW} y={y - 7} width={label === "Mid" ? 70 : 58} height={14} rx="2" fill={fillColor + "cc"} />
+              <text x={PAD.l + chartW + 4} y={y + 4} fill="#fff" fontSize="8" fontFamily="JetBrains Mono" fontWeight="600">
+                {label === "Mid" ? `Mid: ${fmt(val, dec)}` : `${label}: ${fmt(val, dec)}`}
+              </text>
+            </g>
+          ) : null
+        ))}
+      </g>
+    );
+  };
+
+  const renderManualLines = () => {
+    if (!priceLines.length) return null;
+    const lineColor = "#f97316";
+    return priceLines.map((line) => {
+      const y = toY(line.price);
+      if (y < PAD.t || y > PAD.t + chartH) return null;
+      const isSelected = line.id === selectedLineId;
+      return (
+        <g key={line.id}>
+          <line x1={PAD.l} y1={y} x2={PAD.l + chartW} y2={y} stroke={lineColor}
+            strokeWidth={isSelected ? 1.5 : 0.7} strokeDasharray="6,3" opacity={isSelected ? 0.9 : 0.5} />
+          {isSelected ? (
+            <>
+              <rect x={PAD.l + chartW} y={y - 7} width={58} height={14} rx="2" fill={lineColor} />
+              <text x={PAD.l + chartW + 4} y={y + 4} fill="#fff" fontSize="8" fontFamily="JetBrains Mono" fontWeight="600">
+                S/R: {fmt(line.price, dec)}
+              </text>
+              <g onMouseDown={(ev) => { ev.stopPropagation(); removeLine(line.id); }} style={{ cursor: "pointer" }}>
+                <circle cx={PAD.l + chartW + 58 + 8} cy={y} r="7" fill="#1e1e2e" stroke={S.red} strokeWidth="1.5" />
+                <line x1={PAD.l + chartW + 58 + 5} y1={y - 3} x2={PAD.l + chartW + 58 + 11} y2={y + 3} stroke={S.red} strokeWidth="1.5" />
+                <line x1={PAD.l + chartW + 58 + 11} y1={y - 3} x2={PAD.l + chartW + 58 + 5} y2={y + 3} stroke={S.red} strokeWidth="1.5" />
+              </g>
+            </>
+          ) : (
+            <rect x={PAD.l + chartW} y={y - 7} width={58} height={14} rx="2" fill={lineColor + "cc"} opacity="0.7" />
+          )}
+          {!isSelected && (
+            <text x={PAD.l + chartW + 4} y={y + 4} fill="#fff" fontSize="8" fontFamily="JetBrains Mono" fontWeight="600" opacity="0.7">
+              {fmt(line.price, dec)}
+            </text>
+          )}
+        </g>
+      );
+    });
+  };
 
   const renderLine = () => {
     if (visibleClosePrices.length < 2) return null;
@@ -607,6 +723,39 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
           </label>
         ))}
 
+        <div style={{ width: 1, height: 20, background: S.border }} />
+
+        <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, color: showRange ? "#22c55e" : S.dim }}>
+          <input type="checkbox" checked={showRange} onChange={() => setShowRange(p => !p)}
+            style={{ accentColor: "#22c55e", width: 12, height: 12 }} />
+          Range
+        </label>
+
+        <button onClick={() => { setDrawMode(p => !p); setSelectedLineId(null); }} style={{
+          padding: "4px 10px", fontSize: 10, fontWeight: drawMode ? 600 : 400,
+          background: drawMode ? "#f9731618" : "transparent",
+          border: `1px solid ${drawMode ? "#f9731644" : "transparent"}`,
+          borderRadius: 4, color: drawMode ? "#f97316" : S.dim, cursor: "pointer",
+        }}>
+          {drawMode ? "Draw: ON" : "Draw S/R"}
+        </button>
+
+        {drawMode && (
+          <span style={{ fontSize: 9, color: "#f97316", border: `1px solid #f9731633`, borderRadius: 4, padding: "2px 6px" }}>
+            Click chart to add support/resistance lines
+          </span>
+        )}
+
+        {priceLines.length > 0 && (
+          <button onClick={() => { setPriceLines([]); setSelectedLineId(null); }} style={{
+            padding: "2px 8px", fontSize: 9,
+            background: S.red + "14", border: `1px solid ${S.red}44`,
+            borderRadius: 4, color: S.red, cursor: "pointer",
+          }}>
+            Clear S/R
+          </button>
+        )}
+
         {isRealData && (
           <span style={{ fontSize: 9, color: S.green, border: `1px solid ${S.green}33`, borderRadius: 4, padding: "2px 6px" }}>
             LIVE
@@ -650,6 +799,16 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
             )}
           </div>
         )}
+        {showRange && rangeData && (
+          <>
+            <div style={{ width: 1, height: 20, background: S.border }} />
+            <div style={{ fontSize: 10, color: "#22c55e", display: "flex", gap: 8 }}>
+              <span>Range:</span>
+              <span style={{ ...mono }}>{fmt(rangeData.pts, dec)} pts</span>
+              <span style={{ ...mono }}>({fmt(rangeData.pct, 2)}%)</span>
+            </div>
+          </>
+        )}
         {selection && selection.avg != null && (
           <div style={{ marginLeft: "auto", fontSize: 11, display: "flex", gap: 12, alignItems: "center" }}>
             <span style={{ color: S.blue, fontSize: 10, fontWeight: 600 }}>Sel</span>
@@ -688,6 +847,12 @@ export default function ChartsPage({ ALL, prices, hist, sel, setSel, S }) {
                 </text>
               </g>
             ))}
+
+            {/* Price range band (bottom layer) */}
+            {renderPriceRange()}
+
+            {/* Manual support/resistance lines */}
+            {renderManualLines()}
 
             <rect x={PAD.l} y={PAD.t} width={chartW} height={chartH} fill="none" stroke={S.border} strokeWidth="0.5" rx="2" />
 
