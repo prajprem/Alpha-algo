@@ -133,47 +133,39 @@ export default function FourteenKTab({ prices, hist, S }) {
   const [results, setResults] = useState({});
   const [loading, setLoading] = useState(true);
 
+  const fetchSym = useCallback(async (sym, currentPrice, histPrices) => {
+    const result = { sym };
+    try {
+      const [trendR, patR] = await Promise.all([
+        fetch(`/api/chart/history?symbol=${sym}&interval=1h`, { signal: AbortSignal.timeout(10000) }),
+        fetch(`/api/chart/history?symbol=${sym}&interval=5m`, { signal: AbortSignal.timeout(10000) }),
+      ]);
+      if (!trendR.ok) { return { ...result, error: "trend fetch failed" }; }
+      if (!patR.ok) { return { ...result, error: "pattern fetch failed" }; }
+
+      const [trendData, patData] = await Promise.all([trendR.json(), patR.json()]);
+      if (!trendData.ohlc || trendData.ohlc.length < 20) { return { ...result, error: "insufficient 1h data" }; }
+      if (!patData.ohlc || patData.ohlc.length < 10) { return { ...result, error: "insufficient 5m data" }; }
+
+      const trend = determineTrend(trendData.ohlc);
+      const blended = buildLiveCandles(patData.ohlc, histPrices?.[sym], currentPrice?.[sym]?.usd, 5 * 60 * 1000);
+      const allPatterns = findAllPatterns(blended);
+      const patterns = allPatterns.filter(p => p.trend === trend);
+
+      return { ...result, trend, patterns, candleCount: patData.ohlc.length, blendedCount: blended.length };
+    } catch (e) {
+      return { ...result, error: e.message };
+    }
+  }, []);
+
   const analyze = useCallback(async () => {
     setLoading(true);
+    const resultsArr = await Promise.all(SUPPORTED.map(sym => fetchSym(sym, prices, hist)));
     const out = {};
-    const currentPrice = prices;
-    const histPrices = hist;
-
-    for (const sym of SUPPORTED) {
-      try {
-        // Step 1: Fetch 1h data to determine market trend
-        const trendR = await fetch(`/api/chart/history?symbol=${sym}&interval=1h`, {
-          signal: AbortSignal.timeout(10000),
-        });
-        if (!trendR.ok) { out[sym] = { error: "trend fetch failed" }; continue; }
-        const trendData = await trendR.json();
-        if (!trendData.ohlc || trendData.ohlc.length < 20) { out[sym] = { error: "insufficient 1h data" }; continue; }
-        const trend = determineTrend(trendData.ohlc);
-
-        // Step 2: Fetch 5m data for pattern detection
-        const patR = await fetch(`/api/chart/history?symbol=${sym}&interval=5m`, {
-          signal: AbortSignal.timeout(10000),
-        });
-        if (!patR.ok) { out[sym] = { error: "pattern fetch failed" }; continue; }
-        const patData = await patR.json();
-        if (!patData.ohlc || patData.ohlc.length < 10) { out[sym] = { error: "insufficient 5m data" }; continue; }
-
-        // Blend historical 5m candles with a live candle from realtime data
-        const blended = buildLiveCandles(patData.ohlc, histPrices?.[sym], currentPrice?.[sym]?.usd, 5 * 60 * 1000);
-
-        // Find only patterns matching the 1h trend direction
-        const allPatterns = findAllPatterns(blended);
-        const patterns = allPatterns.filter(p => p.trend === trend);
-
-        out[sym] = { trend, patterns, candleCount: patData.ohlc.length, blendedCount: blended.length };
-      } catch (e) {
-        out[sym] = { error: e.message };
-      }
-    }
-
+    resultsArr.forEach(r => { out[r.sym] = r; });
     setResults(out);
     setLoading(false);
-  }, [prices, hist]);
+  }, [prices, hist, fetchSym]);
 
   useEffect(() => { analyze(); }, [analyze]);
 
