@@ -1049,8 +1049,7 @@ export default function App() {
         .then(r => r.json())
         .then(data => {
           if (data.ohlc && data.ohlc.length > 10) {
-            const closes = data.ohlc.map(c => c.close);
-            setOhlcPrices(prev => ({ ...prev, [a.symbol]: closes }));
+            setOhlcPrices(prev => ({ ...prev, [a.symbol]: data.ohlc }));
             ohlcFetchedRef.current[a.symbol] = true;
           }
         })
@@ -1066,7 +1065,8 @@ export default function App() {
       ALL.forEach((a) => {
         const p = prices[a.symbol]?.usd;
         // Use real OHLC close prices when available, fall back to hist
-        const h = ohlcPrices[a.symbol] || hist[a.symbol];
+        const raw = ohlcPrices[a.symbol];
+        const h = raw ? (typeof raw[0] === 'object' ? raw.map(c => c.close) : raw) : hist[a.symbol];
         if (h && h.length >= 5 && p) {
           newInd[a.symbol] = runAllIndicators(h, p, null);
           newGann[a.symbol] = gannSignal(p, h, prices[a.symbol]?.usd_24h_change);
@@ -1440,13 +1440,13 @@ export default function App() {
           <IndicatorsTab ALL={ALL} prices={prices} indicators={indicators} gannData={gannData} sel={sel} setSel={setSel} S={S} />
         )}
         {tab === "14k" && (
-          <FourteenKTab prices={prices} hist={hist} S={S} />
+          <FourteenKTab ALL={ALL} prices={prices} hist={hist} S={S} />
         )}
         {tab === "analysis" && (
           <AnalysisTab trades={trades} prices={prices} indicators={indicators} ALL={ALL} S={S} toast_={toast_} />
         )}
         {tab === "verdict" && (
-          <TradeVerdictTab ALL={ALL} prices={prices} indicators={indicators} gannData={gannData} hist={hist} S={S} toast_={toast_} />
+          <TradeVerdictTab ALL={ALL} prices={prices} indicators={indicators} gannData={gannData} hist={hist} ohlcPrices={ohlcPrices} sentiments={sentiments} cfg={cfg} S={S} toast_={toast_} />
         )}
         {tab === "connections" && (
           <ConnectionsTab connections={connections} setConnections={setConnections} S={S} toast_={toast_} />
